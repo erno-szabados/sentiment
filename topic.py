@@ -4,19 +4,22 @@ import csv
 import ollama 
 import sys 
 
+# Topics analysis script using Ollama API
+
+
 # Set logging level (optional)
 logging.basicConfig(level=logging.WARNING)
 
 # --- Ollama Configuration ---
 # Name of the model available in your Ollama instance (e.g., run 'ollama list' in your terminal)
-#model_name = "smollm2:1.7b" # Accuracy: 0.9592
-#model_name ="gemma3:1b" # Accuracy: 0.9184
-#model_name ="gemma3:4b" # Accuracy: 0.9184
-#model_name = "llama3.2:1b" # Accuracy: 0.2245
-#model_name="phi4-mini:latest" # Accuracy: 0.9184
-#model_name="granite3.3:2b" # Accuracy: 0.9388
-# Path to your labeled sentiment data file (CSV)
-data_file_path = "data/labeled_sentiment_data.csv"
+#model_name = "smollm2:1.7b" # Accuracy: 0.40
+#model_name ="gemma3:1b" # Accuracy: 0.86
+#model_name ="gemma3:4b" # Accuracy: 0.96
+#model_name = "llama3.2:1b" # Accuracy: 0.18
+#model_name="phi4-mini:latest" # Accuracy: 0.94
+model_name="granite3.3:2b" # Accuracy: 0.90
+# Path to your labeled data file (CSV)
+data_file_path = "data/labeled_topic_data.csv"
 
 # Define the parameter ranges for experimentation
 temperatures_to_test = [0.1]
@@ -24,23 +27,21 @@ top_ps_to_test = [0.1]
 top_ks_to_test = [5]
 seeds_to_test = [4233]  # You can add more seeds for robustness
 
-#temperatures_to_test = [0.1]
-#top_ps_to_test = [0.1]
-#top_ks_to_test = [10]
-#seeds_to_test = [55,3133,32,4677]  # You can add more seeds for robustness
+topics = ["technology", "health", "sports", "politics", "entertainment", "other"]
 
 # --- IMPORTANT ---
 # Ensure the Ollama server is running before executing this script.
 # You might need to install the ollama library: pip install ollama
 # ---
 
-def analyze_sentiment(model_name, text, temperature, top_p, top_k, seed):
+def analyze_topics(model_name, text, temperature, top_p, top_k, seed):
+    topic_list = ", ".join(topics)
     prompt = f"""
-                    Evaluate the sentiment of the following text. Classify it as positive, negative, or neutral. Respond with a single word. Example:
-                    Text: 'This is an example.'
-                    Sentiment: neutral
-                    Text: '{text}'
-                    Sentiment:"""
+            Determine the dominant topic of the following text. Classify it as {topic_list}. Respond with a single word. Example:
+            Text: 'Chris Dobey won his first Premier League night of 2025 with a 6-2 win over Stephen Bunting on an evening of shocks in Rotterdam.'
+            Topic: sports
+            Text: '{text}'
+            Topic:"""
     try:
         response = ollama.generate(
             model=model_name,
@@ -51,17 +52,17 @@ def analyze_sentiment(model_name, text, temperature, top_p, top_k, seed):
                 'top_p': top_p,
                 'top_k': top_k,
                 'seed': seed,
-                'num_predict': 10, # Max tokens for the sentiment word (generous)
-                'stop': ["\n", "Text:", "Sentiment:"], # Stop sequences
+                'num_predict': 10, # Max tokens for the emotion word (generous)
+                'stop': ["\n", "Text:", "Topic:"], # Stop sequences
                 'num_ctx': 4096 # Context window size (adjust if needed)
             }
         )
         # Ollama response structure gives the generated text in 'response'
         
         # Parse the response
-        sentiment = response['response'].split("Sentiment:")[-1].strip().lower()
+        topic = response['response'].split("Topic:")[-1].strip().lower()
 
-        return sentiment
+        return topic
 
     except Exception as e:
         print(f"Error during Ollama API call: {e}")
@@ -77,7 +78,7 @@ def analyze_sentiment(model_name, text, temperature, top_p, top_k, seed):
 
 def evaluate_accuracy(model_name, data_file_path, temperature, top_p, top_k, seed):
     """
-    Evaluates the accuracy of sentiment analysis using Ollama over a dataset.
+    Evaluates the accuracy of topic analysis using Ollama over a dataset.
     """
     correct_predictions = 0
     total_samples = 0
@@ -114,12 +115,12 @@ def evaluate_accuracy(model_name, data_file_path, temperature, top_p, top_k, see
                 text_to_analyze = row.get('text', '').strip()
                 true_label = row.get('label', '').strip().lower()
 
-                if text_to_analyze and true_label in ["positive", "negative", "neutral"]:
+                if text_to_analyze and true_label in topics:
                     start_time = time.time()
-                    predicted_sentiment = analyze_sentiment(model_name, text_to_analyze, temperature, top_p, top_k, seed)
+                    predicted_topic = analyze_topics(model_name, text_to_analyze, temperature, top_p, top_k, seed)
                     end_time = time.time()
 
-                    if predicted_sentiment == "error":
+                    if predicted_topic == "error":
                         error_count += 1
                         continue # Skip this sample if API call failed
 
@@ -127,15 +128,12 @@ def evaluate_accuracy(model_name, data_file_path, temperature, top_p, top_k, see
                     total_processing_time += processing_time
                     total_samples += 1
 
-                    if predicted_sentiment == true_label:
+                    if predicted_topic == true_label:
                         correct_predictions += 1
 
                     count += 1
                     if count % 50 == 0: # Print progress
                         print(f"  Processed {count} samples...")
-
-                # else: # Optional: Log skipped rows
-                #     print(f"Skipping row due to empty text or invalid label: {row}")
 
 
         if total_samples > 0:
